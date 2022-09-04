@@ -39,7 +39,7 @@ use strict_encoding::{MediumVec, StrictEncode};
 
 use crate::bus::{
     BusMsg, ConsignReq, CtlMsg, DaemonId, Endpoints, FinalizeTransferReq, OutpointStateReq,
-    ProcessReq, Responder, ServiceBus, ServiceId, ValidityResp,
+    ProcessReq, Responder, ServiceBus, ServiceId, ValidityResp, AcceptTransferReq,
 };
 use crate::{Config, DaemonError, LaunchError};
 
@@ -234,6 +234,21 @@ impl Runtime {
                     endseals,
                     psbt,
                     beneficiary,
+                )?;
+            }
+
+            CtlMsg::AcceptTransfer(AcceptTransferReq {
+                client_id,
+                consignment,
+                outpoint,
+                blind_factor
+            }) => {
+                self.handle_accept_transfer(
+                    endpoints,
+                    client_id,
+                    consignment,
+                    outpoint,
+                    blind_factor,
                 )?;
             }
 
@@ -445,6 +460,27 @@ impl Runtime {
                     self.send_rpc(endpoints, client_id, RpcMsg::StateTransferFinalize(transfer));
                 self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingComplete)?
             }
+        }
+        Ok(())
+    }
+
+    fn handle_accept_transfer(
+        &mut self,
+        endpoints: &mut Endpoints,
+        client_id: ClientId,
+        consignment: StateTransfer,
+        outpoint: OutPoint,
+        blind_factor: u64
+    ) -> Result<(), DaemonError> {
+        match self.accept_transfer(consignment, outpoint, blind_factor) {
+            Ok(_) => {
+                let _ = self.send_rpc(endpoints, client_id, RpcMsg::TransferReveled);    
+                self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingComplete)?
+            }
+            Err(_) => {
+                let _ = self.send_rpc(endpoints, client_id, RpcMsg::TransferNotReveled);
+                self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingFailed)?                
+            }   
         }
         Ok(())
     }

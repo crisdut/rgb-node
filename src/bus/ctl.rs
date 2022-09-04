@@ -52,6 +52,9 @@ pub enum CtlMsg {
     FinalizeTransfer(FinalizeTransferReq),
 
     #[display(inner)]
+    AcceptTransfer(AcceptTransferReq),    
+
+    #[display(inner)]
     #[from]
     Validity(ValidityResp),
 
@@ -60,6 +63,7 @@ pub enum CtlMsg {
 
     #[display("processing_failed()")]
     ProcessingFailed,
+
 }
 
 #[derive(Clone, Debug, Display, StrictEncode, StrictDecode)]
@@ -105,4 +109,15 @@ pub struct FinalizeTransferReq {
     pub endseals: Vec<SealEndpoint>,
     pub psbt: Psbt,
     pub beneficiary: Option<NodeAddr>,
+}
+
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(NetworkEncode, NetworkDecode)]
+#[display("accept_transfer({client_id}, ...)")]
+pub struct AcceptTransferReq {
+    pub client_id: ClientId,
+    pub consignment: StateTransfer,
+    pub outpoint: OutPoint,
+    pub blind_factor: u64,
 }

@@ -26,7 +26,7 @@ use rgb::schema::TransitionType;
 use rgb::{
     Contract, ContractConsignment, ContractId, SealEndpoint, StateTransfer, TransferConsignment,
 };
-use rgb_rpc::{AcceptReq, ComposeReq, FailureCode, HelloReq, OutpointFilter, RpcMsg, TransferReq};
+use rgb_rpc::{AcceptReq, ComposeReq, FailureCode, HelloReq, OutpointFilter, RpcMsg, TransferReq, RevealReq};
 use storm::ContainerId;
 use storm_ext::ExtMsg as StormMsg;
 use storm_rpc::AddressedMsg;
@@ -34,7 +34,7 @@ use storm_rpc::AddressedMsg;
 use crate::bucketd::StashError;
 use crate::bus::{
     BusMsg, ConsignReq, CtlMsg, DaemonId, Endpoints, FinalizeTransferReq, OutpointStateReq,
-    ProcessReq, Responder, ServiceBus, ServiceId,
+    ProcessReq, Responder, ServiceBus, ServiceId, AcceptTransferReq
 };
 use crate::db::ChunkHolder;
 use crate::rgbd::daemons::Daemon;
@@ -268,6 +268,20 @@ impl Runtime {
                     beneficiary,
                 )?;
             }
+
+            RpcMsg::AcceptTransfer(RevealReq {
+                consignment,
+                outpoint,
+                blind_factor
+            }) => {
+                self.reveal_transfer(
+                    endpoints,
+                    client_id,
+                    consignment,
+                    outpoint,
+                    blind_factor
+                )?;
+            }
             wrong_msg => {
                 error!("Request is not supported by the RPC interface");
                 return Err(DaemonError::wrong_esb_msg(ServiceBus::Rpc, &wrong_msg));
@@ -294,7 +308,7 @@ impl Runtime {
                     self.bucketd_free.push_back(daemon_id);
                     self.pick_task(endpoints)?;
                 }
-            }
+            },
 
             wrong_msg => {
                 error!("Request is not supported by the CTL interface");
@@ -532,6 +546,23 @@ impl Runtime {
             endseals,
             psbt,
             beneficiary,
+        }));
+        self.pick_or_start(endpoints, client_id)
+    }
+
+    fn reveal_transfer(
+        &mut self,
+        endpoints: &mut Endpoints,
+        client_id: ClientId,        
+        consignment: StateTransfer,
+        outpoint: OutPoint,
+        blind_factor: u64
+    ) -> Result<(), DaemonError> {
+        self.ctl_queue.push_back(CtlMsg::AcceptTransfer(AcceptTransferReq {
+            client_id,
+            consignment,
+            outpoint,
+            blind_factor
         }));
         self.pick_or_start(endpoints, client_id)
     }

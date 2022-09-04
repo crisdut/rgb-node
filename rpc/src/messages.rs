@@ -65,8 +65,11 @@ pub enum RpcMsg {
     #[display(inner)]
     ConsumeContract(AcceptReq<ContractConsignment>),
 
-    #[display("accept_transfer(...)")]
+    #[display("consume_transfer(...)")]
     ConsumeTransfer(AcceptReq<TransferConsignment>),
+
+    #[display("accept_transfer(...)")]
+    AcceptTransfer(RevealReq),    
 
     #[display(inner)]
     Transfer(TransferReq),
@@ -109,7 +112,14 @@ pub enum RpcMsg {
     UnresolvedTxids(Vec<Txid>),
 
     #[display("invalid(...)")]
-    Invalid(validation::Status),
+    Invalid(validation::Status),  
+
+    #[display("accept_revelead(...)")]
+    TransferReveled,
+
+    #[display("accept_not_revelead(...)")]
+    TransferNotReveled,
+    
 }
 
 impl From<presentation::Error> for RpcMsg {
@@ -139,6 +149,13 @@ pub enum ContractValidity {
     UnknownTxids(Vec<Txid>),
 }
 
+#[derive(Clone, Debug)]
+#[derive(StrictEncode, StrictDecode)]
+pub enum AcceptValidity {
+    Valid,
+    Invalid
+}
+
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[derive(StrictEncode, StrictDecode)]
 pub enum OutpointFilter {
@@ -154,6 +171,7 @@ impl OutpointFilter {
         }
     }
 }
+
 
 #[derive(Clone, PartialEq, Eq, Debug, Display)]
 #[derive(NetworkEncode, NetworkDecode)]
@@ -201,3 +219,21 @@ pub struct TransferFinalize {
     pub consignment: StateTransfer,
     pub psbt: Psbt,
 }
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(NetworkEncode, NetworkDecode)]
+#[display("reveal_state(...)")]
+pub struct RevealReq {
+    pub consignment: StateTransfer,
+    pub outpoint: OutPoint,
+    pub blind_factor: u64,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(NetworkEncode, NetworkDecode)]
+#[display("transfer_accept(...)")]
+pub struct TransferAccept {
+    pub message: String
+}
+
+

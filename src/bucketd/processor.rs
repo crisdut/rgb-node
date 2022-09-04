@@ -13,16 +13,17 @@ use std::io;
 use std::io::Write;
 
 use bitcoin::{OutPoint, Txid};
-use commit_verify::{lnpbp4, TaggedHash};
+use bp::seals::txout::CloseMethod;
+use commit_verify::{lnpbp4, TaggedHash, CommitConceal};
 use psbt::Psbt;
 use rgb::psbt::RgbExt;
-use rgb::schema::TransitionType;
+use rgb::schema::{TransitionType, OwnedRightType};
 use rgb::{
     bundle, validation, Anchor, BundleId, Consignment, ConsignmentType, ContractId, ContractState,
     ContractStateMap, Disclosure, Genesis, InmemConsignment, Node, NodeId, Schema, SchemaId,
-    SealEndpoint, StateTransfer, Transition, TransitionBundle, Validator, Validity,
+    SealEndpoint, StateTransfer, Transition, TransitionBundle, Validator, Validity, seal, Assignment, TypedAssignments, PedersenStrategy, OwnedRights
 };
-use rgb_rpc::{OutpointFilter, TransferFinalize};
+use rgb_rpc::{OutpointFilter, TransferFinalize, TransferAccept};
 use storm::chunk::ChunkIdExt;
 use storm::{ChunkId, Container, ContainerId};
 use strict_encoding::StrictDecode;
@@ -112,6 +113,13 @@ pub enum FinalizeError {
     #[display(inner)]
     #[from]
     Anchor(bp::dbc::anchor::Error),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Display, Error, From)]
+#[display(doc_comments)]
+pub enum AcceptError {
+    NotFoundBlindUTXO,
+    UnknownBlindUTXO,
 }
 
 impl Runtime {
@@ -257,6 +265,7 @@ impl Runtime {
                 .expect("enough data should be available to create bundle");
             self.store.store_sten(db::BUNDLES, witness_txid, &data)?;
         }
+
         for extension in consignment.state_extensions() {
             let node_id = extension.node_id();
             debug!("Processing state extension {}", node_id);
@@ -405,6 +414,116 @@ impl Runtime {
         self.store.store_sten(db::DISCLOSURES, txid, &disclosure)?;
 
         Ok(TransferFinalize { consignment, psbt })
+    }
+
+    pub(super) fn accept_transfer<T: ConsignmentType>(
+        &mut self,
+        consignment: InmemConsignment<T>,
+        outpoint: OutPoint,
+        blind_factor: u64,
+    ) -> Result<TransferAccept, DaemonError> {
+
+        let reveal_outpoint = seal::Revealed {
+            method: CloseMethod::TapretFirst,
+            blinding: blind_factor,
+            txid: Some(outpoint.txid),
+            vout: outpoint.vout as u32,
+        };
+        let conseals = consignment
+            .endpoints()
+            .filter(|conseal| reveal_outpoint.to_concealed_seal() == conseal.1.commit_conceal())
+            .clone();
+        
+        if conseals.count() <= 0 {
+            eprintln!(
+                "The provided outpoint and blinding factors does not match \
+                outpoint from the consignment"
+            );
+            Err(DaemonError::Accept)?
+        }
+        
+        let contract_id = consignment.contract_id();
+        let mut state =
+            self.store.retrieve_sten(db::CONTRACTS, contract_id)?.unwrap_or_else(|| {
+                debug!("Contract {} was previously unknown", contract_id);
+                ContractState::with(
+                    consignment.schema_id(),
+                    consignment.root_schema_id(),
+                    contract_id,
+                    consignment.genesis(),
+                )
+            });
+        
+        for (anchor, bundle) in consignment.anchored_bundles() {
+            let witness_txid = anchor.txid;
+            let mut revealed: BTreeMap<Transition, BTreeSet<u16>> = bmap!();
+
+            for (transition, inputs) in bundle.revealed_iter() {
+                let node_id = transition.node_id();
+                let transition_type = transition.transition_type();
+                let mut owned_rights: BTreeMap<OwnedRightType, TypedAssignments> = bmap! {};
+                for (owned_type, assignments) in transition.owned_rights().iter() {
+                    let outpoints = assignments.to_value_assignments();
+                    let mut revealed_assignment: Vec<Assignment<PedersenStrategy>> = empty!();
+                    for out in outpoints {
+                        if out.commit_conceal().to_confidential_seal() != reveal_outpoint.to_concealed_seal() {
+                            revealed_assignment.push(out);
+                        }else{                          
+                            let accept = match out.as_revealed_state(){
+                                Some(seal) => Assignment::Revealed {seal: reveal_outpoint, state: *seal},
+                                _ => out
+                            };
+                            revealed_assignment.push(accept);
+                        }
+                    }
+
+                    owned_rights.insert(*owned_type, TypedAssignments::Value(revealed_assignment));
+                }
+
+                let transition: Transition = Transition::with(
+                    transition.transition_type().clone(), 
+                    transition.metadata().clone(), 
+                    transition.parent_public_rights().clone(), 
+                    OwnedRights::from(owned_rights), 
+                    transition.public_rights().clone(), 
+                    transition.parent_owned_rights().clone()
+                );
+
+                state.add_transition(witness_txid, &transition);
+                trace!("Contract state now is {:?}", state);
+
+                trace!("Storing state transition data");
+                revealed.insert(transition.clone(), inputs.clone());
+                self.store.store_merge(db::TRANSITIONS, node_id, transition.clone())?;
+                self.store.store_sten(db::TRANSITION_WITNESS, node_id, &witness_txid)?;
+
+                trace!("Indexing transition");
+                let index_id = ChunkId::with_fixed_fragments(contract_id, transition_type);
+                self.store.insert_into_set(
+                    db::CONTRACT_TRANSITIONS,
+                    index_id,
+                    node_id.into_array(),
+                )?;
+
+                self.store.store_sten(db::NODE_CONTRACTS, node_id, &contract_id)?;
+
+                for seal in transition.filter_revealed_seals() {
+                    let index_id = ChunkId::with_fixed_fragments(
+                        seal.txid.expect("seal should contain revealed txid"),
+                        seal.vout,
+                    );
+                    self.store.insert_into_set(db::OUTPOINTS, index_id, node_id.into_array())?;
+                }
+            }
+            let data = TransitionBundle::with(revealed, empty!())
+                .expect("enough data should be available to create bundle");
+            self.store.store_sten(db::BUNDLES, witness_txid, &data)?;
+        }
+        
+        self.store.store_sten(db::CONTRACTS, contract_id, &state)?;
+        
+        let message= "transfer accept and revealed";
+        Ok(TransferAccept { message: message.to_string() })
     }
 }
 

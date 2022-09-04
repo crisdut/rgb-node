@@ -185,7 +185,22 @@ pub enum TransferCommand {
 
         /// State transfer consignment send by the payee.
         consignment: PathBuf,
-    },
+    },  
+
+    /// accept and reveal transfer consignment.
+    #[display("accept ...")]
+    Accept {
+        
+        /// State transfer consignment receive by the payer.
+        consignment: PathBuf,
+
+        /// Locally-controlled outpoint (specified when the utxo blinded was
+        /// created)
+        outpoint: OutPoint,
+
+        /// Outpoint blinding factor (generated when the utxo blinded was created)
+        blinding_factor: u64,
+    },      
 }
 
 /// Command-line constract subcommands:

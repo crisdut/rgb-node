@@ -12,6 +12,9 @@ _rgb-cli() {
             "$1")
                 cmd="rgb__cli"
                 ;;
+            accept)
+                cmd+="__accept"
+                ;;
             combine)
                 cmd+="__combine"
                 ;;
@@ -450,8 +453,38 @@ _rgb-cli() {
             return 0
             ;;
         rgb__cli__transfer)
-            opts="-h -R -n -v --help --rpc --chain --verbose compose combine finalize consume help"
+            opts="-h -R -n -v --help --rpc --chain --verbose compose combine finalize consume accept help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --rpc)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -R)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --chain)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -n)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        rgb__cli__transfer__accept)
+            opts="-h -R -n -v --help --rpc --chain --verbose <CONSIGNMENT> <OUTPOINT> <BLINDING_FACTOR>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

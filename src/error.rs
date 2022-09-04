@@ -78,6 +78,8 @@ pub(crate) enum DaemonError {
     RequestNotSupported(ServiceBus, String),
     // /// request `{1}` is not supported on {0} message bus for service {2}
     // SourceNotSupported(ServiceBus, String, ServiceId),
+
+    Accept,
 }
 
 impl microservices::error::Error for DaemonError {}
@@ -99,6 +101,7 @@ impl From<DaemonError> for RpcMsg {
             DaemonError::Stash(_) => FailureCode::Stash,
             DaemonError::Finalize(_) => FailureCode::Finalize,
             DaemonError::NoContainer(_) => FailureCode::Store,
+            DaemonError::Accept => FailureCode::Accept,
         };
         RpcMsg::Failure(rpc::Failure {
             code: code.into(),

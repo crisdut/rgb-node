@@ -21,7 +21,7 @@ use psbt::Psbt;
 use rgb::blank::BlankBundle;
 use rgb::psbt::{RgbExt, RgbInExt};
 use rgb::{Node, StateTransfer, Transition, TransitionBundle};
-use rgb_rpc::{Client, ContractValidity};
+use rgb_rpc::{Client, ContractValidity, AcceptValidity};
 use strict_encoding::{StrictDecode, StrictEncode};
 
 use crate::opts::{ContractCommand, OutpointCommand, TransferCommand};
@@ -98,6 +98,7 @@ impl TransferCommand {
             } => format!("Finalizing state transfer and sending it to {}", addr),
             Self::Finalize { send: None, .. } => s!("Finalizing state transfer"),
             Self::Consume { .. } => s!("Verifying and consuming state transfer"),
+            Self::Accept { .. } => s!("Accept and reveal state transfer"),            
         }
     }
 }
@@ -142,6 +143,15 @@ impl Exec for Opts {
                     "Warning".bold().bright_yellow(),
                     "--force".bold().bright_white(),
                 );
+            }
+        };
+
+        let report_accept = |status| match status {
+            AcceptValidity::Valid => {
+                println!("{}: transfer is accept and reveal", "Success".ended())
+            }
+            AcceptValidity::Invalid => {
+                eprintln!("{}: Invalid reveal information", "Error".err())
             }
         };
 
@@ -283,6 +293,12 @@ impl Exec for Opts {
                     let consignment = StateTransfer::strict_file_load(&consignment)?;
                     let status = client.consume_transfer(consignment, force, progress)?;
                     report_validation(status);
+                }
+
+                TransferCommand::Accept { consignment, outpoint, blinding_factor } => {
+                    let consignment = StateTransfer::strict_file_load(&consignment)?;
+                    let status = client.accept_transfer(consignment, outpoint, blinding_factor, progress)?;
+                    report_accept(status);
                 }
             },
         }

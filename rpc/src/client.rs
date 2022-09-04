@@ -22,10 +22,10 @@ use psbt::Psbt;
 use rgb::schema::TransitionType;
 use rgb::{Contract, ContractId, ContractState, ContractStateMap, SealEndpoint, StateTransfer};
 
-use crate::messages::{HelloReq, TransferFinalize};
+use crate::messages::{HelloReq, TransferFinalize, RevealReq};
 use crate::{
     AcceptReq, BusMsg, ComposeReq, ContractValidity, Error, FailureCode, OutpointFilter, RpcMsg,
-    ServiceId, TransferReq,
+    ServiceId, TransferReq, AcceptValidity,
 };
 
 // We have just a single service bus (RPC), so we can use any id
@@ -257,6 +257,28 @@ impl Client {
                 RpcMsg::Success(_) => return Ok(ContractValidity::Valid),
                 RpcMsg::Progress(info) => progress(info),
                 _ => return Err(Error::UnexpectedServerResponse),
+            }
+        }
+    }
+
+    pub fn accept_transfer(
+        &mut self, 
+        transfer: StateTransfer, 
+        outpoint: OutPoint,
+        blind: u64,
+        progress: impl Fn(String),        
+    )-> Result<AcceptValidity, Error>{
+        self.request(RpcMsg::AcceptTransfer(RevealReq {
+            consignment: transfer,
+            outpoint: outpoint,
+            blind_factor: blind
+        }))?;
+
+        loop {
+            match self.response()?.failure_to_error()? {
+                RpcMsg::TransferReveled => return Ok(AcceptValidity::Valid),
+                RpcMsg::Progress(info) => progress(info),
+                _ => return Ok(AcceptValidity::Invalid),
             }
         }
     }
