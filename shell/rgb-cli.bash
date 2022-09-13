@@ -15,6 +15,9 @@ _rgb-cli() {
             accept)
                 cmd+="__accept"
                 ;;
+            bifrost)
+                cmd+="__bifrost"
+                ;;
             combine)
                 cmd+="__combine"
                 ;;
@@ -453,7 +456,7 @@ _rgb-cli() {
             return 0
             ;;
         rgb__cli__transfer)
-            opts="-h -R -n -v --help --rpc --chain --verbose compose combine finalize consume accept help"
+            opts="-h -R -n -v --help --rpc --chain --verbose compose combine finalize consume bifrost accept help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -489,6 +492,44 @@ _rgb-cli() {
                 return 0
             fi
             case "${prev}" in
+                --rpc)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -R)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --chain)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -n)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        rgb__cli__transfer__bifrost)
+            opts="-s -h -R -n -v --send --help --rpc --chain --verbose <CONSIGNMENT>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --send)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -s)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --rpc)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

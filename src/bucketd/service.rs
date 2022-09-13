@@ -38,8 +38,9 @@ use storm_rpc::AddressedMsg;
 use strict_encoding::{MediumVec, StrictEncode};
 
 use crate::bus::{
-    BusMsg, ConsignReq, CtlMsg, DaemonId, Endpoints, FinalizeTransferReq, OutpointStateReq,
-    ProcessReq, Responder, ServiceBus, ServiceId, ValidityResp, AcceptTransferReq,
+    AcceptTransferReq, BifrostTransferReq, BusMsg, ConsignReq, CtlMsg, DaemonId, Endpoints,
+    FinalizeTransferReq, OutpointStateReq, ProcessReq, Responder, ServiceBus, ServiceId,
+    ValidityResp,
 };
 use crate::{Config, DaemonError, LaunchError};
 
@@ -112,7 +113,9 @@ impl esb::Handler<ServiceBus> for Runtime {
     type Request = BusMsg;
     type Error = DaemonError;
 
-    fn identity(&self) -> ServiceId { ServiceId::Bucket(self.id) }
+    fn identity(&self) -> ServiceId {
+        ServiceId::Bucket(self.id)
+    }
 
     fn on_ready(&mut self, endpoints: &mut EndpointList<ServiceBus>) -> Result<(), Self::Error> {
         thread::sleep(Duration::from_millis(100));
@@ -247,7 +250,7 @@ impl Runtime {
                 client_id,
                 consignment,
                 outpoint,
-                blind_factor
+                blind_factor,
             }) => {
                 self.handle_accept_transfer(
                     endpoints,
@@ -255,6 +258,19 @@ impl Runtime {
                     consignment,
                     outpoint,
                     blind_factor,
+                )?;
+            }
+
+            CtlMsg::BifrostTransfer(BifrostTransferReq {
+                client_id,
+                consignment,
+                beneficiary,
+            }) => {
+                self.handle_bifrost_transfer(
+                    endpoints,
+                    client_id,
+                    consignment,
+                    beneficiary
                 )?;
             }
 
@@ -321,11 +337,15 @@ impl Runtime {
                     Validity::Valid => RpcMsg::success(),
                 };
                 let _ = self.send_rpc(endpoints, client_id, msg);
-                self.send_ctl(endpoints, ServiceId::rgbd(), ValidityResp {
-                    client_id,
-                    consignment_id: id,
-                    status,
-                })?
+                self.send_ctl(
+                    endpoints,
+                    ServiceId::rgbd(),
+                    ValidityResp {
+                        client_id,
+                        consignment_id: id,
+                        status,
+                    },
+                )?
             }
         }
         Ok(())
@@ -476,18 +496,75 @@ impl Runtime {
         client_id: ClientId,
         consignment: StateTransfer,
         outpoint: OutPoint,
-        blind_factor: u64
+        blind_factor: u64,
     ) -> Result<(), DaemonError> {
         match self.accept_transfer(consignment, outpoint, blind_factor) {
             Ok(_) => {
-                let _ = self.send_rpc(endpoints, client_id, RpcMsg::TransferReveled);    
+                let _ = self.send_rpc(endpoints, client_id, RpcMsg::TransferReveled);
                 self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingComplete)?
             }
             Err(_) => {
                 let _ = self.send_rpc(endpoints, client_id, RpcMsg::TransferNotReveled);
-                self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingFailed)?                
-            }   
+                self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingFailed)?
+            }
         }
+        Ok(())
+    }
+
+    fn handle_bifrost_transfer(
+        &mut self,
+        endpoints: &mut Endpoints,
+        _client_id: ClientId,
+        consignment: StateTransfer,
+        beneficiary: Option<NodeAddr>,
+    ) -> Result<(), DaemonError> {
+        if let Some(beneficiary) = beneficiary {
+            // 1. Containerize consignment
+            // TODO: Make consignment containerization part of the RGB stdlib; use logical,
+            //       not a size-chunking
+            let data = consignment.strict_serialize()?;
+            let mut chunk_ids = MediumVec::new();
+            let size = data.len() as u64;
+            for piece in data.chunks(u24::MAX.into_usize()) {
+                let chunk = Chunk::try_from(piece)?;
+                let chunk_id = chunk.chunk_id();
+                self.store.store(storm_rpc::DB_TABLE_CHUNKS, chunk_id, &chunk)?;
+                chunk_ids.push(chunk_id)?;
+            }
+
+            let header = ContainerHeader {
+                version: 0,
+                mime: AsciiString::from_str("application/vnd.lnpbp.rgb.consignment")
+                    .expect("hardcoded MIME type"),
+                info: empty!(),
+                size,
+            };
+            let header_chunk = Chunk::try_from(header.strict_serialize()?)?;
+            let container = Container {
+                header,
+                chunks: chunk_ids,
+            };
+            let container_chunk = Chunk::try_from(container.strict_serialize()?)?;
+
+            // 2. Upload container to stored database
+            let container_id = container.container_id();
+            self.store.store(storm_rpc::DB_TABLE_CONTAINER_HEADERS, container_id, &header_chunk)?;
+            self.store.store(storm_rpc::DB_TABLE_CONTAINERS, container_id, &container_chunk)?;
+
+            // 3. Instruct storm to send the consignment to the remote peer
+            // TODO: Ensure we are connected to the beneficiary
+            let container_full_id = ContainerFullId {
+                // TODO: Change to use message-wrapped container announcements
+                message_id: MesgId::default(),
+                container_id,
+            };
+            let addressed_msg = AddressedMsg {
+                remote_id: beneficiary.id,
+                data: container_full_id,
+            };
+            self.send_storm(endpoints, StormMsg::SendContainer(addressed_msg))?;
+        }
+        self.send_ctl(endpoints, ServiceId::rgbd(), CtlMsg::ProcessingComplete)?;
         Ok(())
     }
 }

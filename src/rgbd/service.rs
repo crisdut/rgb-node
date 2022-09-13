@@ -26,7 +26,7 @@ use rgb::schema::TransitionType;
 use rgb::{
     Contract, ContractConsignment, ContractId, SealEndpoint, StateTransfer, TransferConsignment,
 };
-use rgb_rpc::{AcceptReq, ComposeReq, FailureCode, HelloReq, OutpointFilter, RpcMsg, TransferReq, RevealReq};
+use rgb_rpc::{AcceptReq, ComposeReq, FailureCode, HelloReq, OutpointFilter, RpcMsg, TransferReq, RevealReq, BifrostSendReq};
 use storm::ContainerId;
 use storm_ext::ExtMsg as StormMsg;
 use storm_rpc::AddressedMsg;
@@ -34,7 +34,7 @@ use storm_rpc::AddressedMsg;
 use crate::bucketd::StashError;
 use crate::bus::{
     BusMsg, ConsignReq, CtlMsg, DaemonId, Endpoints, FinalizeTransferReq, OutpointStateReq,
-    ProcessReq, Responder, ServiceBus, ServiceId, AcceptTransferReq
+    ProcessReq, Responder, ServiceBus, ServiceId, AcceptTransferReq, BifrostTransferReq
 };
 use crate::db::ChunkHolder;
 use crate::rgbd::daemons::Daemon;
@@ -282,6 +282,19 @@ impl Runtime {
                     blind_factor
                 )?;
             }
+
+            RpcMsg::BifrostSend(BifrostSendReq {
+                consignment,
+                beneficiary
+            }) => {
+                self.send_transfer(
+                    endpoints,
+                    client_id,
+                    consignment,
+                    beneficiary,
+                )?;
+            }
+
             wrong_msg => {
                 error!("Request is not supported by the RPC interface");
                 return Err(DaemonError::wrong_esb_msg(ServiceBus::Rpc, &wrong_msg));
@@ -566,4 +579,20 @@ impl Runtime {
         }));
         self.pick_or_start(endpoints, client_id)
     }
+
+    fn send_transfer(
+        &mut self,
+        endpoints: &mut Endpoints,
+        client_id: ClientId,
+        consignment: StateTransfer,
+        beneficiary: Option<NodeAddr>,
+    ) -> Result<(), DaemonError> {
+        self.ctl_queue.push_back(CtlMsg::BifrostTransfer(BifrostTransferReq {
+            client_id,
+            consignment,
+            beneficiary,
+        }));
+        self.pick_or_start(endpoints, client_id)
+    }
+
 }

@@ -77,6 +77,9 @@ pub enum RpcMsg {
     #[display("memorize_seal({0})")]
     MemorizeSeal(seal::Revealed),
 
+    #[display(inner)]
+    BifrostSend(BifrostSendReq),
+
     // Responses to CLI
     // ----------------
     #[display("contract_ids(...)")]
@@ -234,6 +237,14 @@ pub struct RevealReq {
 #[display("transfer_accept(...)")]
 pub struct TransferAccept {
     pub message: String
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(NetworkEncode, NetworkDecode)]
+#[display("bifrost_send(...)")]
+pub struct BifrostSendReq {
+    pub consignment: StateTransfer,
+    pub beneficiary: Option<NodeAddr>,
 }
 
 

@@ -22,7 +22,7 @@ use psbt::Psbt;
 use rgb::schema::TransitionType;
 use rgb::{Contract, ContractId, ContractState, ContractStateMap, SealEndpoint, StateTransfer};
 
-use crate::messages::{HelloReq, TransferFinalize, RevealReq};
+use crate::messages::{HelloReq, TransferFinalize, RevealReq, BifrostSendReq};
 use crate::{
     AcceptReq, BusMsg, ComposeReq, ContractValidity, Error, FailureCode, OutpointFilter, RpcMsg,
     ServiceId, TransferReq, AcceptValidity,
@@ -279,6 +279,25 @@ impl Client {
                 RpcMsg::TransferReveled => return Ok(AcceptValidity::Valid),
                 RpcMsg::Progress(info) => progress(info),
                 _ => return Ok(AcceptValidity::Invalid),
+            }
+        }
+    }
+
+    pub fn send_on_bifrost(
+        &mut self,
+        consignment: StateTransfer,
+        beneficiary: Option<NodeAddr>,
+        progress: impl Fn(String),
+    ) -> Result<TransferFinalize, Error> {
+        self.request(RpcMsg::BifrostSend(BifrostSendReq {
+            consignment,
+            beneficiary
+        }))?;
+        loop {
+            match self.response()?.failure_to_error()? {
+                RpcMsg::StateTransferFinalize(transfer) => return Ok(transfer),
+                RpcMsg::Progress(info) => progress(info),
+                _ => return Err(Error::UnexpectedServerResponse),
             }
         }
     }

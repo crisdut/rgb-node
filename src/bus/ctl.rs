@@ -52,7 +52,10 @@ pub enum CtlMsg {
     FinalizeTransfer(FinalizeTransferReq),
 
     #[display(inner)]
-    AcceptTransfer(AcceptTransferReq),    
+    AcceptTransfer(AcceptTransferReq),
+
+    #[display(inner)]
+    BifrostTransfer(BifrostTransferReq),    
 
     #[display(inner)]
     #[from]
@@ -120,4 +123,13 @@ pub struct AcceptTransferReq {
     pub consignment: StateTransfer,
     pub outpoint: OutPoint,
     pub blind_factor: u64,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Display)]
+#[derive(NetworkEncode, NetworkDecode)]
+#[display("bifrost_transfer({client_id}, ...)")]
+pub struct BifrostTransferReq {
+    pub client_id: ClientId,
+    pub consignment: StateTransfer,
+    pub beneficiary: Option<NodeAddr>,
 }

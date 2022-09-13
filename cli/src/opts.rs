@@ -187,6 +187,17 @@ pub enum TransferCommand {
         consignment: PathBuf,
     },  
 
+    /// Validate incoming transfer consignment and consume it into the stash.
+    #[display("send ...")]
+    Bifrost {
+        /// State transfer consignment send by the payee.
+        consignment: PathBuf,
+
+       /// Bifrost server to send state transfer to
+       #[clap(short, long)]
+       send: Option<NodeAddr>,        
+    },      
+
     /// accept and reveal transfer consignment.
     #[display("accept ...")]
     Accept {
