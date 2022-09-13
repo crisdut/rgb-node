@@ -148,7 +148,7 @@ where
     ) -> Result<(), esb::Error<ServiceId>> {
         endpoints.send_to(
             ServiceBus::Storm,
-            self.identity(),
+            ServiceId::rgbd(),
             ServiceId::stormd(),
             BusMsg::Storm(message.into()),
         )
