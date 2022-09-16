@@ -44,6 +44,7 @@ use crate::bus::{
 use crate::{Config, DaemonError, LaunchError};
 
 pub fn run(config: Config) -> Result<(), BootstrapError<LaunchError>> {
+    let storm_endpoint = config.storm_endpoint.clone();
     let rpc_endpoint = config.rpc_endpoint.clone();
     let ctl_endpoint = config.ctl_endpoint.clone();
     let runtime = Runtime::init(config)?;
@@ -51,6 +52,11 @@ pub fn run(config: Config) -> Result<(), BootstrapError<LaunchError>> {
     debug!("Connecting to service buses {}, {}", rpc_endpoint, ctl_endpoint);
     let controller = esb::Controller::with(
         map! {
+            ServiceBus::Storm => esb::BusConfig::with_addr(
+                storm_endpoint,
+                ZmqSocketType::RouterConnect,
+                Some(ServiceId::stormd())
+            ),
             ServiceBus::Rpc => esb::BusConfig::with_addr(
                 rpc_endpoint,
                 ZmqSocketType::RouterConnect,
