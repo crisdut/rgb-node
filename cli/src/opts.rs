@@ -16,6 +16,7 @@ use lnpbp::chain::Chain;
 use rgb::schema::TransitionType;
 use rgb::{Contract, ContractId, SealEndpoint};
 use rgb_rpc::RGB_NODE_RPC_ENDPOINT;
+use rgb_rpc::Reveal;
 
 /// Command-line tool for working with RGB node
 #[derive(Parser, Clone, PartialEq, Eq, Debug)]
@@ -185,6 +186,18 @@ pub enum TransferCommand {
 
         /// State transfer consignment send by the payee.
         consignment: PathBuf,
+
+        /// Try reveal the conceal seal.
+        ///
+        /// The reveal infomration contains the outpoint and close method used 
+        /// to generated blind utxo and blinding_factor generated
+        /// 
+        /// Examples:
+        /// 
+        /// tapret1st@<outpoint>#<blinding_factor>
+        /// opret1st@<outpoint>#<blinding_factor>  
+        #[clap(short, long)]
+        reveal: Option<Reveal>,
     },
 }
 

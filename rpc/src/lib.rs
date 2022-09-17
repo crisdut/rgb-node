@@ -26,6 +26,7 @@ pub mod client;
 mod error;
 mod messages;
 mod service_id;
+mod reveal;
 
 pub use client::Client;
 pub use error::{Error, FailureCode};
@@ -35,5 +36,6 @@ pub use messages::{
     TransferReq,
 };
 pub use service_id::ServiceId;
+pub use reveal::Reveal;
 
 pub const RGB_NODE_RPC_ENDPOINT: &str = "0.0.0.0:63963";
