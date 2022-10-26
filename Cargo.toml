@@ -90,3 +90,6 @@ embedded = ["microservices/embedded"]
 
 [package.metadata.configure_me]
 spec = "config_spec.toml"
+
+[patch.crates-io]
+bp-core = { path="../bp-core/" }
